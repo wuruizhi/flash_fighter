@@ -48,13 +48,16 @@ FF.Game = class {
     _update(dt) {
         switch (this.state) {
             case 'menu':
-                if (this.p1Input.confirm || this.p2Input.confirm) { this.audio.resume(); this.state = 'modeSelect'; }
+                if (this.keyboard.wasPressed('Digit1')) { this.audio.resume(); this.gameMode = 'story'; this._startGame(1); }
+                else if (this.keyboard.wasPressed('Digit2')) { this.audio.resume(); this.gameMode = 'coop'; this._startGame(2); }
+                else if (this.keyboard.wasPressed('Digit3')) { this.audio.resume(); this.gameMode = 'pvp'; this._startPvP(); }
+                else if (this.p1Input.confirm || this.p2Input.confirm) { this.audio.resume(); this.state = 'modeSelect'; }
                 break;
             case 'modeSelect':
-                if (this.keyboard.wasPressed('Digit1')) { this.gameMode = 'story'; this._startGame(1); }
-                else if (this.keyboard.wasPressed('Digit2')) { this.gameMode = 'coop'; this._startGame(2); }
-                else if (this.keyboard.wasPressed('Digit3')) { this.gameMode = 'pvp'; this._startPvP(); }
-                else if (this.keyboard.wasPressed('Digit4') || this.keyboard.wasPressed('KeyO')) { this.state = 'settings'; this.ui.settingsInit(this.bindings); }
+                if (this.p1Input.confirm || this.keyboard.wasPressed('Digit1')) { this.audio.resume(); this.gameMode = 'story'; this._startGame(1); }
+                else if (this.keyboard.wasPressed('Digit2')) { this.audio.resume(); this.gameMode = 'coop'; this._startGame(2); }
+                else if (this.keyboard.wasPressed('Digit3')) { this.audio.resume(); this.gameMode = 'pvp'; this._startPvP(); }
+                else if (this.keyboard.wasPressed('Digit4') || this.keyboard.wasPressed('KeyO')) { this.audio.resume(); this.state = 'settings'; this.ui.settingsInit(this.bindings); }
                 else if (this.keyboard.wasPressed('Escape')) { this.state = 'menu'; }
                 break;
             case 'settings':
@@ -400,6 +403,7 @@ FF.Game = class {
 
     _render() {
         const ctx = this.ctx, W = this.W, H = this.H;
+        if (this.touchControls) this.touchControls.setState(this.state);
         ctx.clearRect(0, 0, W, H);
         switch (this.state) {
             case 'menu': this.ui.renderMenu(ctx, W, H); break;

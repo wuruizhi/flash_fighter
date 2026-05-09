@@ -32,7 +32,7 @@ FF.UI = class {
         this.menuBlink += 0.05;
         ctx.globalAlpha = 0.5+Math.sin(this.menuBlink)*0.5;
         ctx.fillStyle = '#FFF'; ctx.font = '700 20px "Noto Sans SC",sans-serif';
-        ctx.fillText('按 ENTER 或 空格 开始', W/2, H*0.82);
+        ctx.fillText('按 ENTER/空格 开始 · 手机点 START 或 1P', W/2, H*0.82);
         ctx.globalAlpha = 1;
         ctx.fillStyle = '#555'; ctx.font = '12px "Noto Sans SC",sans-serif';
         ctx.fillText('支持双人游戏 · 键位可自定义 · 拳皇风格操作', W/2, H*0.92);
@@ -115,7 +115,7 @@ FF.UI = class {
             ctx.fillText(o.desc, W/2-130, y+25);
         });
         ctx.textAlign = 'center'; ctx.fillStyle = '#555'; ctx.font = '12px "Noto Sans SC",sans-serif';
-        ctx.fillText('按对应数字键选择 · ESC 返回', W/2, H*0.92);
+        ctx.fillText('按对应数字键选择 · 手机点右上角 1P/2P/PVP · START 默认单人', W/2, H*0.92);
     }
 
     // Settings screen

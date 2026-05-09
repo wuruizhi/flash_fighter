@@ -16,6 +16,8 @@ body {
     align-items: center;
     min-height: 100vh;
     font-family: 'Noto Sans SC', 'Orbitron', sans-serif;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 #game-container {
@@ -141,15 +143,34 @@ body {
     top: 12px;
     right: 12px;
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 8px;
+    max-width: min(360px, calc(100% - 24px));
     pointer-events: none;
 }
 
 .touch-small {
-    width: 64px;
+    width: 58px;
     height: 34px;
     border-radius: 8px;
     font-size: 10px;
+}
+
+#touch-controls[data-state="playing"] .touch-start,
+#touch-controls[data-state="playing"] .touch-mode,
+#touch-controls[data-state="paused"] .touch-start,
+#touch-controls[data-state="paused"] .touch-mode,
+#touch-controls[data-state="levelTransition"] .touch-start,
+#touch-controls[data-state="levelTransition"] .touch-mode {
+    display: none;
+}
+
+#touch-controls[data-state="menu"] .touch-pause,
+#touch-controls[data-state="modeSelect"] .touch-pause,
+#touch-controls[data-state="gameOver"] .touch-pause,
+#touch-controls[data-state="victory"] .touch-pause {
+    display: none;
 }
 
 .touch-dpad {
@@ -229,7 +250,24 @@ body {
     }
 }
 
+body.touch-capable #touch-controls {
+    display: block;
+}
+
 @media (max-width: 720px) {
+    .touch-menu {
+        top: 8px;
+        right: 8px;
+        gap: 6px;
+        max-width: 260px;
+    }
+
+    .touch-small {
+        width: 48px;
+        height: 30px;
+        font-size: 9px;
+    }
+
     .touch-dpad {
         left: 12px;
         bottom: 10px;

@@ -88,24 +88,28 @@ FF.TouchControls = class {
         this.root = document.createElement('div');
         this.root.id = 'touch-controls';
         this.root.setAttribute('aria-hidden', 'true');
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0) document.body.classList.add('touch-capable');
         this.root.innerHTML = `
             <div class="touch-menu">
-                <button class="touch-btn touch-small" data-action="confirm">START</button>
-                <button class="touch-btn touch-small" data-action="pause">PAUSE</button>
+                <button class="touch-btn touch-small touch-start" data-action="confirm" type="button">START</button>
+                <button class="touch-btn touch-small touch-mode" data-action="story" type="button">1P</button>
+                <button class="touch-btn touch-small touch-mode" data-action="coop" type="button">2P</button>
+                <button class="touch-btn touch-small touch-mode" data-action="pvp" type="button">PVP</button>
+                <button class="touch-btn touch-small touch-pause" data-action="pause" type="button">PAUSE</button>
             </div>
             <div class="touch-dpad">
-                <button class="touch-btn touch-dir touch-up" data-action="up">^</button>
-                <button class="touch-btn touch-dir touch-left" data-action="left">&lt;</button>
-                <button class="touch-btn touch-dir touch-down" data-action="down">v</button>
-                <button class="touch-btn touch-dir touch-right" data-action="right">&gt;</button>
+                <button class="touch-btn touch-dir touch-up" data-action="up" type="button">^</button>
+                <button class="touch-btn touch-dir touch-left" data-action="left" type="button">&lt;</button>
+                <button class="touch-btn touch-dir touch-down" data-action="down" type="button">v</button>
+                <button class="touch-btn touch-dir touch-right" data-action="right" type="button">&gt;</button>
             </div>
             <div class="touch-actions">
-                <button class="touch-btn touch-run" data-action="dash">RUN</button>
-                <button class="touch-btn touch-action" data-action="hp">HP</button>
-                <button class="touch-btn touch-action" data-action="hk">HK</button>
-                <button class="touch-btn touch-action" data-action="lp">LP</button>
-                <button class="touch-btn touch-action" data-action="lk">LK</button>
-                <button class="touch-btn touch-special" data-action="special">SP</button>
+                <button class="touch-btn touch-run" data-action="dash" type="button">RUN</button>
+                <button class="touch-btn touch-action" data-action="hp" type="button">HP</button>
+                <button class="touch-btn touch-action" data-action="hk" type="button">HK</button>
+                <button class="touch-btn touch-action" data-action="lp" type="button">LP</button>
+                <button class="touch-btn touch-action" data-action="lk" type="button">LK</button>
+                <button class="touch-btn touch-special" data-action="special" type="button">SP</button>
             </div>
         `;
         document.getElementById('game-container').appendChild(this.root);
@@ -116,34 +120,66 @@ FF.TouchControls = class {
         this.bindings = { ...bindings };
     }
 
+    setState(state) {
+        this.root.dataset.state = state;
+    }
+
     _codeFor(action) {
         if (action === 'confirm') return 'Enter';
         if (action === 'pause') return 'Escape';
+        if (action === 'story') return 'Digit1';
+        if (action === 'coop') return 'Digit2';
+        if (action === 'pvp') return 'Digit3';
         return this.bindings[action];
+    }
+
+    _press(action, btn, id) {
+        this.active.set(id, { action, btn });
+        this.kb.pressVirtual(this._codeFor(action));
+        btn.classList.add('is-active');
+    }
+
+    _release(id) {
+        const item = this.active.get(id);
+        if (!item) return;
+        this.kb.releaseVirtual(this._codeFor(item.action));
+        item.btn.classList.remove('is-active');
+        this.active.delete(id);
     }
 
     _bindButtons() {
         const buttons = this.root.querySelectorAll('[data-action]');
         buttons.forEach(btn => {
             const action = btn.dataset.action;
-            const press = e => {
+            const pointerPress = e => {
                 e.preventDefault();
-                btn.setPointerCapture(e.pointerId);
-                this.active.set(e.pointerId, { action, btn });
-                this.kb.pressVirtual(this._codeFor(action));
-                btn.classList.add('is-active');
+                if (btn.setPointerCapture && e.pointerId !== undefined) {
+                    try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+                }
+                this._press(action, btn, e.pointerId !== undefined ? e.pointerId : 'mouse');
             };
-            const release = e => {
-                const item = this.active.get(e.pointerId);
-                if (!item) return;
-                this.kb.releaseVirtual(this._codeFor(item.action));
-                item.btn.classList.remove('is-active');
-                this.active.delete(e.pointerId);
+            const pointerRelease = e => {
+                this._release(e.pointerId !== undefined ? e.pointerId : 'mouse');
             };
-            btn.addEventListener('pointerdown', press);
-            btn.addEventListener('pointerup', release);
-            btn.addEventListener('pointercancel', release);
-            btn.addEventListener('lostpointercapture', release);
+            btn.addEventListener('pointerdown', pointerPress);
+            btn.addEventListener('pointerup', pointerRelease);
+            btn.addEventListener('pointercancel', pointerRelease);
+            btn.addEventListener('lostpointercapture', pointerRelease);
+            btn.addEventListener('touchstart', e => {
+                if (window.PointerEvent) return;
+                e.preventDefault();
+                for (const t of e.changedTouches) this._press(action, btn, t.identifier);
+            }, { passive:false });
+            btn.addEventListener('touchend', e => {
+                if (window.PointerEvent) return;
+                e.preventDefault();
+                for (const t of e.changedTouches) this._release(t.identifier);
+            }, { passive:false });
+            btn.addEventListener('touchcancel', e => {
+                if (window.PointerEvent) return;
+                e.preventDefault();
+                for (const t of e.changedTouches) this._release(t.identifier);
+            }, { passive:false });
         });
     }
 };
