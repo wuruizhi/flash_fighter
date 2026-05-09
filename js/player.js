@@ -86,7 +86,11 @@ FF.Player = class {
         if (this.dashTimer <= 0) this.dashing = false;
         if (input.down && !moving) { this.state = 'block'; this.setAnim('block'); return; }
         this.state = moving ? 'walk' : 'idle';
-        this.setAnim(moving ? 'walk' : 'idle');
+        if (moving && this.dashing) {
+            this.setAnim('run');
+        } else {
+            this.setAnim(moving ? 'walk' : 'idle');
+        }
     }
 
     _handleJump(input, C) {
@@ -190,19 +194,33 @@ FF.Player = class {
         this.attackActive = !!curFrame.active;
 
         // Add procedural secondary motion for idle/walk
-        if (this.state === 'idle' || this.state === 'walk') {
-            const breathe = Math.sin(this.breatheT) * 0.015;
-            const sway = Math.sin(this.swayT) * 0.01;
+        if (this.state === 'idle') {
+            const breathe = Math.sin(this.breatheT) * 0.04;
+            const sway = Math.sin(this.swayT) * 0.025;
+            const bounce = Math.sin(this.breatheT * 1.5) * 0.02;
             this.currentPose.body += sway;
             this.currentPose.lShoulder += breathe;
             this.currentPose.rShoulder -= breathe;
-            this.currentPose.headTilt += sway * 0.5;
+            this.currentPose.lKnee += bounce;
+            this.currentPose.rKnee += bounce;
+            this.currentPose.headTilt += sway * 0.4;
+        } else if (this.state === 'walk') {
+            // Walk/run bounce - vertical oscillation synced to stride
+            const stride = Math.sin(this.breatheT * (this.dashing ? 5 : 3.5));
+            const bounce = Math.abs(stride) * 0.06;
+            this.currentPose.body += bounce * 0.3;
+            this.currentPose.headTilt += stride * 0.02;
+            // Store bounce for vertical offset in render
+            this._walkBounce = -Math.abs(stride) * (this.dashing ? 5 : 3);
+        } else {
+            this._walkBounce = 0;
         }
     }
 
     render(ctx, camX) {
         ctx.save();
-        ctx.translate(this.x - camX, this.y);
+        const yBounce = this._walkBounce || 0;
+        ctx.translate(this.x - camX, this.y + yBounce);
         if (this.facing === -1) ctx.scale(-1, 1);
         if (this.invincible > 0 && Math.floor(this.invincible / 60) % 2 === 0) ctx.globalAlpha = 0.5;
         this._drawCharacter(ctx, this.currentPose, true);

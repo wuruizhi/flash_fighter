@@ -7,9 +7,10 @@ const FF = window.FF = {};
 FF.CONFIG = {
     CANVAS_WIDTH: 960, CANVAS_HEIGHT: 540, GROUND_Y: 440,
     GRAVITY: 0.55, FRICTION: 0.88, MAX_ENEMIES_ON_SCREEN: 6,
-    PLAYER_SPEED: 3.5, PLAYER_RUN_SPEED: 5.5, PLAYER_JUMP_FORCE: -11.5,
+    PLAYER_SPEED: 4.5, PLAYER_RUN_SPEED: 7.0, PLAYER_JUMP_FORCE: -12,
     PLAYER_HP: 100, PLAYER_RAGE_MAX: 100, RAGE_PER_HIT: 5, RAGE_PER_DAMAGE: 8,
     CAMERA_FOLLOW_SPEED: 0.08, CAMERA_DEAD_ZONE: 80,
+    ENEMY_CORPSE_DURATION: 12000,
     COMBO_TIMEOUT: 700, HITSTUN_MULT: 1, KNOCKBACK_MULT: 1,
     SKIN_COLOR: '#8B5E3C', SKIN_SHADOW: '#6B4226',
     JERSEY_COLOR: '#CC0000', JERSEY_ACCENT: '#FFD700',
@@ -74,25 +75,53 @@ FF.COMBO_TREE = {
 };
 
 FF.ENEMY_TYPES = {
-    thug:  { hp:35, speed:1.8, attackDamage:6, attackRange:50, attackCooldown:1500, aggroRange:300, width:30, height:80, color:'thug', score:100 },
-    fast:  { hp:22, speed:3.2, attackDamage:8, attackRange:48, attackCooldown:1000, aggroRange:350, width:28, height:76, color:'fast', score:150 },
-    heavy: { hp:70, speed:1.2, attackDamage:18, attackRange:55, attackCooldown:2200, aggroRange:250, width:40, height:90, color:'heavy', score:200, superArmor:true },
-    boss:  { hp:250, speed:2.2, attackDamage:22, attackRange:60, attackCooldown:1200, aggroRange:400, width:42, height:95, color:'boss', score:1000, superArmor:true, phases:3 }
+    // Normal enemies
+    thug:      { hp:35, speed:1.8, attackDamage:6, attackRange:50, attackCooldown:1500, aggroRange:300, width:30, height:80, color:'thug', score:100 },
+    fast:      { hp:22, speed:3.2, attackDamage:8, attackRange:48, attackCooldown:1000, aggroRange:350, width:28, height:76, color:'fast', score:150 },
+    heavy:     { hp:70, speed:1.2, attackDamage:18, attackRange:55, attackCooldown:2200, aggroRange:250, width:40, height:90, color:'heavy', score:200, superArmor:true },
+    // Elite enemies (stronger with special behavior)
+    eliteKnife:{ hp:50, speed:2.5, attackDamage:12, attackRange:55, attackCooldown:900, aggroRange:350, width:30, height:82, color:'eliteKnife', score:300, elite:true, atkPattern:'dash' },
+    eliteNinja:{ hp:40, speed:3.8, attackDamage:10, attackRange:52, attackCooldown:700, aggroRange:400, width:28, height:78, color:'eliteNinja', score:350, elite:true, atkPattern:'combo' },
+    eliteBrute:{ hp:100, speed:1.5, attackDamage:22, attackRange:60, attackCooldown:1800, aggroRange:280, width:44, height:95, color:'eliteBrute', score:400, elite:true, superArmor:true, atkPattern:'charge' },
+    // Bosses - one per level
+    boss1:     { hp:200, speed:2.0, attackDamage:18, attackRange:60, attackCooldown:1200, aggroRange:500, width:44, height:96, color:'boss1', score:1000, superArmor:true, phases:3, boss:true, bossName:'街霸·金刚' },
+    boss2:     { hp:280, speed:2.5, attackDamage:20, attackRange:58, attackCooldown:1000, aggroRange:500, width:40, height:92, color:'boss2', score:1500, superArmor:true, phases:3, boss:true, bossName:'暗影·毒蛇' },
+    boss3:     { hp:400, speed:2.8, attackDamage:25, attackRange:65, attackCooldown:900, aggroRange:500, width:48, height:100, color:'boss3', score:2500, superArmor:true, phases:4, boss:true, bossName:'天王·修罗' }
 };
+
+FF.CONFIG.ENEMY_COLORS.eliteKnife = { shirt:'#8B0000', pants:'#2a0a0a', skin:'#C4A57B' };
+FF.CONFIG.ENEMY_COLORS.eliteNinja = { shirt:'#1a1a2e', pants:'#0a0a15', skin:'#D4A574' };
+FF.CONFIG.ENEMY_COLORS.eliteBrute = { shirt:'#2a2a00', pants:'#1a1a00', skin:'#8B6F47' };
+FF.CONFIG.ENEMY_COLORS.boss1 = { shirt:'#880000', pants:'#440000', skin:'#9B7653' };
+FF.CONFIG.ENEMY_COLORS.boss2 = { shirt:'#004400', pants:'#002200', skin:'#C4A57B' };
+FF.CONFIG.ENEMY_COLORS.boss3 = { shirt:'#330033', pants:'#1a001a', skin:'#8B5E3C' };
 
 FF.LEVELS = [
     { name:'第一关：街头巷战', bgType:'street', width:2400,
-      waves:[ {enemies:[{type:'thug',count:3}],spawnDelay:500}, {enemies:[{type:'thug',count:4}],spawnDelay:800},
-              {enemies:[{type:'thug',count:3},{type:'fast',count:1}],spawnDelay:600}, {enemies:[{type:'thug',count:2},{type:'fast',count:2}],spawnDelay:500} ],
-      weapons:['pipe','bat'] },
+      waves:[
+          {enemies:[{type:'thug',count:3}]},
+          {enemies:[{type:'thug',count:3},{type:'fast',count:1}]},
+          {enemies:[{type:'thug',count:2},{type:'fast',count:2}]},
+          {enemies:[{type:'eliteKnife',count:1},{type:'thug',count:2}]},
+          {enemies:[{type:'boss1',count:1}]}
+      ], weapons:['pipe','bat'] },
     { name:'第二关：暗巷追击', bgType:'alley', width:2800,
-      waves:[ {enemies:[{type:'fast',count:3}],spawnDelay:500}, {enemies:[{type:'thug',count:3},{type:'fast',count:2}],spawnDelay:600},
-              {enemies:[{type:'heavy',count:1},{type:'thug',count:2}],spawnDelay:800}, {enemies:[{type:'thug',count:2},{type:'fast',count:2},{type:'heavy',count:1}],spawnDelay:600} ],
-      weapons:['pipe','bat','knife'] },
+      waves:[
+          {enemies:[{type:'fast',count:3}]},
+          {enemies:[{type:'thug',count:3},{type:'fast',count:2}]},
+          {enemies:[{type:'eliteNinja',count:1},{type:'fast',count:2}]},
+          {enemies:[{type:'heavy',count:1},{type:'eliteKnife',count:1},{type:'thug',count:2}]},
+          {enemies:[{type:'eliteBrute',count:1},{type:'eliteNinja',count:1}]},
+          {enemies:[{type:'boss2',count:1}]}
+      ], weapons:['pipe','bat','knife'] },
     { name:'第三关：天台决战', bgType:'rooftop', width:2200,
-      waves:[ {enemies:[{type:'fast',count:3},{type:'thug',count:2}],spawnDelay:500}, {enemies:[{type:'heavy',count:2},{type:'fast',count:2}],spawnDelay:600},
-              {enemies:[{type:'thug',count:3},{type:'fast',count:2},{type:'heavy',count:1}],spawnDelay:500}, {enemies:[{type:'boss',count:1}],spawnDelay:1000} ],
-      weapons:['knife','katana'] }
+      waves:[
+          {enemies:[{type:'fast',count:3},{type:'thug',count:2}]},
+          {enemies:[{type:'eliteNinja',count:2},{type:'fast',count:2}]},
+          {enemies:[{type:'heavy',count:2},{type:'eliteKnife',count:1}]},
+          {enemies:[{type:'eliteBrute',count:1},{type:'eliteNinja',count:1},{type:'eliteKnife',count:1}]},
+          {enemies:[{type:'boss3',count:1},{type:'thug',count:2}]}
+      ], weapons:['knife','katana'] }
 ];
 
 FF.WEAPONS = {
@@ -104,16 +133,22 @@ FF.WEAPONS = {
 
 // Smoother poses with more natural joint angles
 FF.POSES = {
-    idle1:  { body:0, lShoulder:1.2, lElbow:1.9, rShoulder:1.8, rElbow:1.6, lHip:0.08, lKnee:0.05, rHip:-0.08, rKnee:0.05, headTilt:0 },
-    idle2:  { body:0.02, lShoulder:1.15, lElbow:1.95, rShoulder:1.75, rElbow:1.65, lHip:0.1, lKnee:0.03, rHip:-0.1, rKnee:0.03, headTilt:0.02 },
-    idle3:  { body:-0.02, lShoulder:1.22, lElbow:1.85, rShoulder:1.82, rElbow:1.55, lHip:0.06, lKnee:0.06, rHip:-0.06, rKnee:0.06, headTilt:-0.02 },
-    walk1:  { body:0.06, lShoulder:1.6, lElbow:1.5, rShoulder:0.9, rElbow:2.0, lHip:-0.35, lKnee:0.4, rHip:0.35, rKnee:0, headTilt:0.02 },
-    walk15: { body:0.02, lShoulder:1.3, lElbow:1.7, rShoulder:1.4, rElbow:1.7, lHip:-0.1, lKnee:0.15, rHip:0.1, rKnee:0.05, headTilt:0 },
-    walk2:  { body:-0.06, lShoulder:0.9, lElbow:2.0, rShoulder:1.6, rElbow:1.5, lHip:0.35, lKnee:0, rHip:-0.35, rKnee:0.4, headTilt:-0.02 },
-    walk25: { body:-0.02, lShoulder:1.4, lElbow:1.7, rShoulder:1.3, rElbow:1.7, lHip:0.1, lKnee:0.05, rHip:-0.1, rKnee:0.15, headTilt:0 },
-    jump:   { body:-0.08, lShoulder:2.3, lElbow:1.8, rShoulder:0.8, rElbow:1.2, lHip:-0.4, lKnee:0.7, rHip:0.15, rKnee:0.5, headTilt:-0.08 },
-    jumpUp: { body:-0.12, lShoulder:2.5, lElbow:2.0, rShoulder:0.6, rElbow:1.0, lHip:-0.3, lKnee:0.9, rHip:0.1, rKnee:0.6, headTilt:-0.1 },
-    fall:   { body:0.05, lShoulder:2.0, lElbow:1.6, rShoulder:1.1, rElbow:1.4, lHip:-0.15, lKnee:0.3, rHip:0.25, rKnee:0.5, headTilt:0.05 },
+    // Fighting stance - knees bent, fists up, weight shifting
+    idle1:  { body:-0.05, lShoulder:0.8, lElbow:2.5, rShoulder:1.6, rElbow:2.4, lHip:0.12, lKnee:0.18, rHip:-0.12, rKnee:0.18, headTilt:0 },
+    idle2:  { body:-0.03, lShoulder:0.75, lElbow:2.55, rShoulder:1.55, rElbow:2.45, lHip:0.15, lKnee:0.15, rHip:-0.15, rKnee:0.15, headTilt:0.02 },
+    idle3:  { body:-0.07, lShoulder:0.85, lElbow:2.45, rShoulder:1.65, rElbow:2.35, lHip:0.1, lKnee:0.2, rHip:-0.1, rKnee:0.2, headTilt:-0.02 },
+    // Walk/Run - wide strides, big arm swings, forward lean, bounce
+    walk1:  { body:0.2,  lShoulder:2.2, lElbow:1.0, rShoulder:0.2, rElbow:2.5, lHip:-0.7, lKnee:0.8, rHip:0.6, rKnee:0.05, headTilt:0.04 },
+    walk15: { body:0.15, lShoulder:1.4, lElbow:1.8, rShoulder:1.0, rElbow:2.0, lHip:-0.15, lKnee:0.3, rHip:0.2, rKnee:0.15, headTilt:0.02 },
+    walk2:  { body:0.2,  lShoulder:0.2, lElbow:2.5, rShoulder:2.2, rElbow:1.0, lHip:0.6, lKnee:0.05, rHip:-0.7, rKnee:0.8, headTilt:-0.04 },
+    walk25: { body:0.15, lShoulder:1.0, lElbow:2.0, rShoulder:1.4, rElbow:1.8, lHip:0.2, lKnee:0.15, rHip:-0.15, rKnee:0.3, headTilt:-0.02 },
+    // Run (dash) - even more exaggerated
+    run1:   { body:0.3,  lShoulder:2.5, lElbow:0.8, rShoulder:-0.2, rElbow:2.8, lHip:-0.9, lKnee:1.0, rHip:0.8, rKnee:0.05, headTilt:0.05 },
+    run2:   { body:0.3,  lShoulder:-0.2, lElbow:2.8, rShoulder:2.5, rElbow:0.8, lHip:0.8, lKnee:0.05, rHip:-0.9, rKnee:1.0, headTilt:-0.05 },
+    // Jump / fall
+    jump:   { body:-0.1, lShoulder:2.0, lElbow:1.6, rShoulder:1.0, rElbow:1.4, lHip:-0.5, lKnee:0.9, rHip:0.2, rKnee:0.7, headTilt:-0.08 },
+    jumpUp: { body:-0.15, lShoulder:2.3, lElbow:1.8, rShoulder:0.7, rElbow:1.1, lHip:-0.3, lKnee:1.0, rHip:0.15, rKnee:0.8, headTilt:-0.1 },
+    fall:   { body:0.08, lShoulder:1.8, lElbow:1.5, rShoulder:1.2, rElbow:1.6, lHip:-0.2, lKnee:0.4, rHip:0.3, rKnee:0.6, headTilt:0.06 },
     // Light punch
     lp_w:   { body:-0.1, lShoulder:1.4, lElbow:2.2, rShoulder:2.2, rElbow:2.6, lHip:0.08, lKnee:0, rHip:-0.12, rKnee:0.05, headTilt:-0.05 },
     lp_h:   { body:0.12, lShoulder:1.1, lElbow:1.7, rShoulder:0.1, rElbow:0.05, lHip:0.08, lKnee:0, rHip:-0.12, rKnee:0.08, headTilt:0.03 },
@@ -162,7 +197,8 @@ FF.POSES = {
 // Smoother animations with more keyframes and easing
 FF.ANIMS = {
     idle:      { loop:true,  frames:[{pose:'idle1',dur:500},{pose:'idle2',dur:400},{pose:'idle3',dur:500},{pose:'idle1',dur:400}] },
-    walk:      { loop:true,  frames:[{pose:'walk1',dur:160},{pose:'walk15',dur:100},{pose:'walk2',dur:160},{pose:'walk25',dur:100}] },
+    walk:      { loop:true,  frames:[{pose:'walk1',dur:120},{pose:'walk15',dur:80},{pose:'walk2',dur:120},{pose:'walk25',dur:80}] },
+    run:       { loop:true,  frames:[{pose:'run1',dur:90},{pose:'walk15',dur:60},{pose:'run2',dur:90},{pose:'walk25',dur:60}] },
     jump:      { loop:false, frames:[{pose:'jump',dur:150},{pose:'jumpUp',dur:350}] },
     fall:      { loop:false, frames:[{pose:'fall',dur:400}] },
     lp:        { loop:false, frames:[{pose:'lp_w',dur:50},{pose:'lp_h',dur:100,active:true},{pose:'idle1',dur:50}] },

@@ -16,7 +16,7 @@ FF.Level = class {
         this.completed = false;
         this.enemies = [];
         this.weaponDrops = [];
-        this.scrollBoundary = 0;
+        this.scrollBoundary = this.width;
         this.bgOffset = 0;
     }
 
@@ -31,23 +31,25 @@ FF.Level = class {
             }
         }
 
-        // Check wave clear
+        // Check wave clear - count enemies that are still fighting (hp>0 and not dead)
         if (this.waveActive) {
-            const alive = this.enemies.filter(e => !e.dead);
+            const alive = this.enemies.filter(e => !e.dead && e.hp > 0);
             if (alive.length === 0) {
+                // Mark all remaining knockdown enemies as dead immediately
+                this.enemies.forEach(e => { if (e.hp <= 0) e.dead = true; });
                 this.waveActive = false;
                 this.currentWave++;
                 if (this.currentWave >= this.waves.length) {
                     this.completed = true;
                 } else {
-                    this.waveDelay = 1500;
+                    this.waveDelay = 1200;
                     // Drop weapon after clearing wave
                     if (Math.random() < 0.5 && this.weaponTypes.length > 0) {
                         const wt = this.weaponTypes[Math.floor(Math.random() * this.weaponTypes.length)];
                         this.weaponDrops.push({ type: wt, x: player.x + (Math.random() - 0.5) * 100, y: FF.CONFIG.GROUND_Y });
                     }
-                    // Unlock scrolling
-                    this.scrollBoundary = Math.min(this.width - FF.CONFIG.CANVAS_WIDTH, this.scrollBoundary + FF.CONFIG.CANVAS_WIDTH * 0.6);
+                    // Unlock scrolling further
+                    this.scrollBoundary = this.width;
                 }
             }
         }
@@ -56,6 +58,8 @@ FF.Level = class {
         for (const e of this.enemies) {
             e.update(dt, player, game);
         }
+        // Clean up fully dead enemies after their death animation
+        this.enemies = this.enemies.filter(e => !(e.dead && e.state === 'knockdown' && e.stateTimer <= 0));
     }
 
     _spawnWave(player, game) {

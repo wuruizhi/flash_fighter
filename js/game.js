@@ -300,7 +300,7 @@ FF.Game = class {
         if (this.level) this.level.renderBackground(ctx, this.camX);
         const entities = [];
         for (const p of this.players) entities.push({ obj: p, y: p.y });
-        if (this.level) for (const e of this.level.enemies) if (!e.dead || e.state === 'knockdown') entities.push({ obj: e, y: e.y });
+        if (this.level) for (const e of this.level.enemies) if (!e.remove && (!e.dead || e.state === 'knockdown')) entities.push({ obj: e, y: e.y });
         entities.sort((a, b) => a.y - b.y);
         for (const ent of entities) {
             ctx.save(); ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath();
