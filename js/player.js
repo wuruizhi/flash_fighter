@@ -11,14 +11,17 @@ FF.Player = class {
         this.rage = 0; this.score = 0; this.grounded = false;
         this.state = 'idle'; this.anim = 'idle'; this.animTime = 0; this.animFrame = 0;
         this.currentPose = { ...FF.POSES.idle1 }; this.targetPose = null;
+        this.previousPose = { ...this.currentPose };
+        this.poseBlendTime = 0; this.poseBlendDuration = 0;
         this.attackName = null; this.attackHit = false; this.attackActive = false;
         this.stateTimer = 0; this.comboState = null; this.comboTimer = 0;
         this.comboCount = 0; this.invincible = 0;
         this.weapon = null; this.weaponDurability = 0;
-        this.dashing = false; this.dashTimer = 0; this.lives = 3;
+        this.dashing = false; this.dashTimer = 0; this.lives = FF.CONFIG.PLAYER_LIVES || 5;
         // Smooth animation accumulators
         this.breatheT = Math.random() * Math.PI * 2;
         this.swayT = Math.random() * Math.PI * 2;
+        this._renderYOffset = 0;
         // Colors based on player index
         const C = FF.CONFIG;
         if (playerIndex === 1) {
@@ -78,12 +81,13 @@ FF.Player = class {
 
     _handleMovement(dt, input, C) {
         let moving = false;
-        const speed = this.dashing ? C.PLAYER_RUN_SPEED : C.PLAYER_SPEED;
+        if (input.dashLeft) { this.dashTimer = 320; this.facing = -1; }
+        if (input.dashRight) { this.dashTimer = 320; this.facing = 1; }
+        const wantsDash = input.dash || this.dashTimer > 0;
+        const speed = wantsDash ? C.PLAYER_RUN_SPEED : C.PLAYER_SPEED;
         if (input.left) { this.vx = -speed; this.facing = -1; moving = true; }
         else if (input.right) { this.vx = speed; this.facing = 1; moving = true; }
-        if (input.dashLeft) { this.dashing = true; this.dashTimer = 300; this.facing = -1; }
-        if (input.dashRight) { this.dashing = true; this.dashTimer = 300; this.facing = 1; }
-        if (this.dashTimer <= 0) this.dashing = false;
+        this.dashing = moving && wantsDash;
         if (input.down && !moving) { this.state = 'block'; this.setAnim('block'); return; }
         this.state = moving ? 'walk' : 'idle';
         if (moving && this.dashing) {
@@ -107,6 +111,7 @@ FF.Player = class {
         if (this.state === 'attack' && this.stateTimer > 80) return;
         const key = input.getAttackKey();
         if (!key) return;
+        if ((key === 'lp' || key === 'hp') && this._tryFireRangedWeapon(game)) return;
         // Sweep: down + lk
         if (input.down && key === 'lk' && this.grounded) { this._startAttack('sweep', game); return; }
         // Dash attack
@@ -130,18 +135,55 @@ FF.Player = class {
         const atk = FF.ATTACKS[name]; if (!atk) return;
         this.state = 'attack'; this.attackName = name; this.attackHit = false; this.attackActive = false;
         this.stateTimer = atk.animDuration; this.setAnim(name);
+        this._spawnMoveEffects(name, game);
         game.audio.play(atk.sound);
     }
 
     _startSpecial(game) {
         this.rage = 0; this._startAttack('special', game);
-        game.effects.shake(12, 400); game.effects.slowMotion(0.3, 500);
+        game.effects.shake(18, 520); game.effects.slowMotion(0.25, 620);
+        game.effects.flashScreen(0.85);
+    }
+
+    _spawnMoveEffects(name, game) {
+        if (!game || !game.effects) return;
+        const fx = this.x + this.facing * 24;
+        const fy = this.y - 48;
+        game.effects.addMoveBurst(fx, fy, this.facing, name);
+        if (name === 'dashPunch') {
+            game.effects.shake(5, 120);
+        } else if (name === 'uppercut' || name === 'roundkick') {
+            game.effects.shake(4, 110);
+        } else if (name === 'special') {
+            game.effects.shake(12, 260);
+        }
     }
 
     _tryPickupWeapon(game) {
         if (this.weapon) return;
         const wp = game.findNearbyWeapon(this.x, this.y, 50);
-        if (wp) { this.weapon = wp.type; this.weaponDurability = FF.WEAPONS[wp.type].durability; game.removeWeaponDrop(wp); game.audio.play('pickup'); }
+        if (wp) {
+            const def = FF.WEAPONS[wp.type];
+            this.weapon = wp.type;
+            this.weaponDurability = def.ammo || def.durability;
+            game.removeWeaponDrop(wp);
+            game.audio.play('pickup');
+        }
+    }
+
+    _tryFireRangedWeapon(game) {
+        const wp = this.weapon ? FF.WEAPONS[this.weapon] : null;
+        if (!wp || !wp.ranged || this.weaponDurability <= 0 || !game.spawnProjectile) return false;
+        this.state = 'attack';
+        this.attackName = null;
+        this.attackHit = true;
+        this.attackActive = false;
+        this.stateTimer = wp.fireRecovery || 220;
+        this.setAnim(wp.explosive ? 'hp' : 'lp');
+        game.spawnProjectile(this, this.weapon);
+        this.weaponDurability--;
+        if (this.weaponDurability <= 0) this.weapon = null;
+        return true;
     }
 
     takeDamage(damage, knockback, fromDir, isKnockdown) {
@@ -160,19 +202,25 @@ FF.Player = class {
         this.comboCount++;
         this.rage = Math.min(FF.CONFIG.PLAYER_RAGE_MAX, this.rage + FF.CONFIG.RAGE_PER_HIT);
         if (this.comboCount > 1) { game.effects.updateCombo(this.comboCount, this.x, this.y - 60); game.audio.play('combo'); }
-        if (this.weapon) { this.weaponDurability--; if (this.weaponDurability <= 0) { this.weapon = null; } }
+        const wp = this.weapon ? FF.WEAPONS[this.weapon] : null;
+        if (wp && !wp.ranged) { this.weaponDurability--; if (this.weaponDurability <= 0) { this.weapon = null; } }
     }
 
     getAttackBox() {
         if (!this.attackName || !this.attackActive) return null;
         const atk = FF.ATTACKS[this.attackName];
-        const range = atk.range * (this.weapon ? FF.WEAPONS[this.weapon].rangeMult : 1);
+        const wp = this.weapon ? FF.WEAPONS[this.weapon] : null;
+        const range = atk.range * (wp && !wp.ranged ? wp.rangeMult : 1);
         return { x: this.x + this.facing * range * 0.5, y: this.y - 45, w: range, h: 50 };
     }
     getHurtBox() { return { x: this.x, y: this.y - this.height / 2, w: this.width, h: this.height }; }
 
     setAnim(name) {
         if (this.anim === name) return;
+        this.previousPose = { ...this.currentPose };
+        const urgent = name === 'hurt' || name === 'knockdown' || name === 'die';
+        this.poseBlendDuration = urgent ? 38 : 86;
+        this.poseBlendTime = this.poseBlendDuration;
         this.anim = name; this.animTime = 0; this.animFrame = 0;
     }
 
@@ -180,20 +228,37 @@ FF.Player = class {
         const anim = FF.ANIMS[this.anim];
         if (!anim) return;
         this.animTime += dt;
-        const frame = anim.frames[this.animFrame];
+        let frame = anim.frames[this.animFrame];
         if (!frame) return;
-        if (this.animTime >= frame.dur) {
-            this.animTime -= frame.dur; this.animFrame++;
-            if (this.animFrame >= anim.frames.length) this.animFrame = anim.loop ? 0 : anim.frames.length - 1;
+        let guard = 0;
+        while (frame && this.animTime >= frame.dur && guard++ < 8) {
+            this.animTime -= frame.dur;
+            if (this.animFrame < anim.frames.length - 1) {
+                this.animFrame++;
+            } else if (anim.loop) {
+                this.animFrame = 0;
+            } else {
+                this.animFrame = anim.frames.length - 1;
+                this.animTime = Math.min(this.animTime, frame.dur);
+                break;
+            }
+            frame = anim.frames[this.animFrame];
         }
         const curFrame = anim.frames[this.animFrame];
         const nextIdx = (this.animFrame + 1) % anim.frames.length;
         const nextFrame = anim.frames[anim.loop ? nextIdx : Math.min(nextIdx, anim.frames.length - 1)];
         const t = curFrame.dur > 0 ? this.animTime / curFrame.dur : 0;
-        this.currentPose = FF.lerpPose(curFrame.pose, nextFrame.pose, t);
+        let pose = FF.lerpPose(curFrame.pose, nextFrame.pose, t);
+        if (this.poseBlendTime > 0 && this.previousPose) {
+            this.poseBlendTime = Math.max(0, this.poseBlendTime - dt);
+            const blendT = 1 - this.poseBlendTime / Math.max(1, this.poseBlendDuration);
+            pose = FF.lerpPose(this.previousPose, pose, blendT);
+        }
+        this.currentPose = pose;
         this.attackActive = !!curFrame.active;
 
         // Add procedural secondary motion for idle/walk
+        let targetYOffset = 0;
         if (this.state === 'idle') {
             const breathe = Math.sin(this.breatheT) * 0.04;
             const sway = Math.sin(this.swayT) * 0.025;
@@ -210,21 +275,44 @@ FF.Player = class {
             const bounce = Math.abs(stride) * 0.06;
             this.currentPose.body += bounce * 0.3;
             this.currentPose.headTilt += stride * 0.02;
-            // Store bounce for vertical offset in render
-            this._walkBounce = -Math.abs(stride) * (this.dashing ? 5 : 3);
-        } else {
-            this._walkBounce = 0;
+            targetYOffset = -Math.abs(stride) * (this.dashing ? 5 : 3);
         }
+        const follow = Math.min(1, dt / 82);
+        this._renderYOffset += (targetYOffset - this._renderYOffset) * follow;
     }
 
     render(ctx, camX) {
         ctx.save();
-        const yBounce = this._walkBounce || 0;
+        const yBounce = this._renderYOffset || 0;
         ctx.translate(this.x - camX, this.y + yBounce);
         if (this.facing === -1) ctx.scale(-1, 1);
         if (this.invincible > 0 && Math.floor(this.invincible / 60) % 2 === 0) ctx.globalAlpha = 0.5;
+        if (this.attackName === 'special') this._drawSuperAura(ctx);
         this._drawCharacter(ctx, this.currentPose, true);
         if (this.weapon) this._drawWeapon(ctx, this.currentPose);
+        ctx.restore();
+    }
+
+    _drawSuperAura(ctx) {
+        const t = (this.animTime + this.stateTimer * 0.35) * 0.018;
+        const pulse = 0.7 + Math.sin(t) * 0.18;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const grd = ctx.createRadialGradient(0, -52, 8, 0, -52, 92);
+        grd.addColorStop(0, `rgba(255,250,190,${0.45 + pulse * 0.25})`);
+        grd.addColorStop(0.42, `rgba(255,74,18,${0.25 + pulse * 0.2})`);
+        grd.addColorStop(1, 'rgba(255,34,0,0)');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.ellipse(0, -52, 58 + pulse * 14, 86 + pulse * 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(255,220,90,${0.65 + pulse * 0.2})`;
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 3; i++) {
+            ctx.beginPath();
+            ctx.ellipse(0, -44, 28 + i * 17 + pulse * 10, 11 + i * 5, t * 0.25 + i, 0, Math.PI * 2);
+            ctx.stroke();
+        }
         ctx.restore();
     }
 
@@ -308,6 +396,30 @@ FF.Player = class {
         const rhx=rex+Math.cos(pose.rShoulder+pose.rElbow)*fA, rhy=rey+Math.sin(pose.rShoulder+pose.rElbow)*fA;
         const angle = pose.rShoulder + pose.rElbow;
         ctx.save(); ctx.translate(rhx,rhy); ctx.rotate(angle);
+        if (wp.ranged) {
+            const longGun = this.weapon === 'shotgun' || this.weapon === 'bazooka';
+            const len = this.weapon === 'bazooka' ? 42 : longGun ? 36 : 24;
+            const barrelH = this.weapon === 'bazooka' ? 9 : longGun ? 6 : 4;
+            ctx.fillStyle = wp.color;
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(0, -barrelH / 2, len, barrelH, 3) : ctx.rect(0, -barrelH / 2, len, barrelH);
+            ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#222';
+            ctx.fillRect(5, barrelH / 2 - 1, 6, 9);
+            if (longGun) {
+                ctx.strokeStyle = '#2A1A10';
+                ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(1, 2); ctx.lineTo(-12, 10); ctx.stroke();
+            }
+            ctx.fillStyle = wp.bulletColor || '#FFE36E';
+            ctx.beginPath();
+            ctx.arc(len + 2, 0, this.weapon === 'bazooka' ? 4 : 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            return;
+        }
         ctx.strokeStyle = wp.color; ctx.lineWidth = this.weapon==='katana'?2:3; ctx.lineCap = 'round';
         const len = this.weapon==='knife'?18:30;
         ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(len,0); ctx.stroke();

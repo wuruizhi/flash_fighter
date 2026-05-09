@@ -12,12 +12,16 @@ FF.Game = class {
         // Load saved bindings or use defaults
         this.bindings = JSON.parse(JSON.stringify(FF.DEFAULT_BINDINGS));
         try { const saved = localStorage.getItem('ff_bindings'); if (saved) this.bindings = JSON.parse(saved); } catch(e) {}
+        this.bindings.p1 = { ...FF.DEFAULT_BINDINGS.p1, ...(this.bindings.p1 || {}) };
+        this.bindings.p2 = { ...FF.DEFAULT_BINDINGS.p2, ...(this.bindings.p2 || {}) };
         this.p1Input = new FF.PlayerInput(this.bindings.p1, this.keyboard);
         this.p2Input = new FF.PlayerInput(this.bindings.p2, this.keyboard);
+        this.touchControls = new FF.TouchControls(this.keyboard, this.bindings.p1);
         this.audio = new FF.Audio();
         this.effects = new FF.Effects();
         this.ui = new FF.UI();
         this.players = []; this.level = null; this.camX = 0;
+        this.projectiles = [];
         this.state = 'menu'; // menu, modeSelect, settings, playing, paused, levelTransition, gameOver, victory
         this.gameMode = 'story'; // story, pvp, coop
         this.currentLevel = 0;
@@ -60,6 +64,7 @@ FF.Game = class {
                     try { localStorage.setItem('ff_bindings', JSON.stringify(this.bindings)); } catch(e) {}
                     this.p1Input.bindings = { ...this.bindings.p1 };
                     this.p2Input.bindings = { ...this.bindings.p2 };
+                    this.touchControls.setBindings(this.bindings.p1);
                     this.state = 'modeSelect';
                 }
                 break;
@@ -84,6 +89,7 @@ FF.Game = class {
             this.players[i].update(dt, inputs[i], this);
         }
         if (this.level) this.level.update(dt, this.players[0], this);
+        this._updateProjectiles(dt);
         if (this.gameMode === 'pvp') this._resolvePvPCombat(dt);
         else this._resolveCombat(dt);
         this.effects.update(dt);
@@ -135,12 +141,14 @@ FF.Game = class {
                         player.attackHit = true;
                         const atk = FF.ATTACKS[player.attackName];
                         let dmg = atk.damage;
-                        if (player.weapon) dmg *= FF.WEAPONS[player.weapon].damageMult;
+                        const weaponDef = player.weapon ? FF.WEAPONS[player.weapon] : null;
+                        if (weaponDef && !weaponDef.ranged) dmg *= weaponDef.damageMult;
                         if (player.comboCount > 2) dmg *= 1 + (player.comboCount - 2) * 0.1;
                         enemy.takeDamage(dmg, atk.knockback, player.facing, atk.knockdown, atk.launcher);
                         player.onHitEnemy(this);
                         const hx = (player.x + enemy.x) / 2, hy = enemy.y - 45;
                         this.effects.addHitFlash(hx, hy);
+                        this.effects.addImpactBurst(hx, hy, player.facing, player.attackName);
                         this.effects.spawnHitParticles(hx, hy, 8, '#FFD700');
                         this.effects.addDamageNumber(hx, hy, dmg, player.comboCount >= 5);
                         this.audio.play('hit');
@@ -164,7 +172,7 @@ FF.Game = class {
                     const eAtk = enemy.getAttackBox();
                     if (eAtk && !enemy.attackHit && this._boxOverlap(eAtk, player.getHurtBox())) {
                         enemy.attackHit = true;
-                        player.takeDamage(enemy.attackDamage, 5, enemy.facing, enemy.type === 'heavy' || enemy.type === 'boss');
+                        player.takeDamage(enemy.attackDamage * FF.CONFIG.ENEMY_DAMAGE_SCALE, 5, enemy.facing, enemy.type === 'heavy' || enemy.type === 'boss');
                         this.effects.spawnHitParticles(player.x, player.y - 40, 5, '#FF0000');
                         this.effects.shake(3, 100); this.audio.play('hit');
                     }
@@ -183,16 +191,132 @@ FF.Game = class {
                 atk.attackHit = true;
                 const atkDef = FF.ATTACKS[atk.attackName];
                 let dmg = atkDef.damage;
-                if (atk.weapon) dmg *= FF.WEAPONS[atk.weapon].damageMult;
+                const weaponDef = atk.weapon ? FF.WEAPONS[atk.weapon] : null;
+                if (weaponDef && !weaponDef.ranged) dmg *= weaponDef.damageMult;
                 if (atk.comboCount > 2) dmg *= 1 + (atk.comboCount - 2) * 0.1;
                 def.takeDamage(dmg, atkDef.knockback, atk.facing, atkDef.knockdown);
                 atk.onHitEnemy(this);
                 const hx = (atk.x + def.x) / 2, hy = def.y - 45;
                 this.effects.addHitFlash(hx, hy);
+                this.effects.addImpactBurst(hx, hy, atk.facing, atk.attackName);
                 this.effects.spawnHitParticles(hx, hy, 8, i === 0 ? '#FFD700' : '#4488FF');
                 this.effects.addDamageNumber(hx, hy, dmg, atk.comboCount >= 5);
                 if (dmg >= 15) this.effects.shake(dmg * 0.3, 150);
                 this.audio.play('hit');
+            }
+        }
+    }
+
+    spawnProjectile(player, weaponType) {
+        const wp = FF.WEAPONS[weaponType];
+        if (!wp || !wp.ranged) return;
+        const pellets = wp.pellets || 1;
+        const mid = (pellets - 1) * 0.5;
+        for (let i = 0; i < pellets; i++) {
+            const spread = (i - mid) * (wp.spread || 0) + (pellets === 1 ? 0 : (Math.random() - 0.5) * (wp.spread || 0) * 0.35);
+            this.projectiles.push({
+                owner: player,
+                ownerIndex: player.playerIndex,
+                weaponType,
+                x: player.x + player.facing * 34,
+                y: player.y - 52,
+                vx: player.facing * wp.projectileSpeed,
+                vy: spread * wp.projectileSpeed,
+                facing: player.facing,
+                damage: wp.projectileDamage,
+                knockback: wp.knockback || 6,
+                explosive: !!wp.explosive,
+                blastRadius: wp.blastRadius || 0,
+                range: wp.range || 600,
+                traveled: 0,
+                radius: wp.explosive ? 7 : 3,
+                color: wp.bulletColor || '#FFE36E',
+                life: 1400,
+                hit: false
+            });
+        }
+        if (this.projectiles.length > 80) this.projectiles.splice(0, this.projectiles.length - 80);
+        this.effects.spawnEnergyParticles(player.x + player.facing * 42, player.y - 52, player.facing, wp.bulletColor || '#FFE36E', wp.explosive ? 10 : 5);
+        this.effects.addHitFlash(player.x + player.facing * 43, player.y - 52, wp.bulletColor || '#FFE36E', wp.explosive ? 32 : 20);
+        this.effects.shake(wp.explosive ? 7 : pellets > 1 ? 4 : 2, wp.explosive ? 180 : 90);
+        this.audio.play(wp.sound || 'gun');
+    }
+
+    _updateProjectiles(dt) {
+        if (!this.projectiles.length) return;
+        const step = dt * 0.06;
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            const p = this.projectiles[i];
+            p.x += p.vx * step;
+            p.y += p.vy * step;
+            p.traveled += Math.abs(p.vx * step);
+            p.life -= dt;
+            if (p.explosive) p.vy += 0.012 * dt;
+            if (this.level && (p.x < 0 || p.x > this.level.width || p.traveled > p.range || p.life <= 0)) {
+                if (p.explosive && p.life > 0) this._explodeProjectile(p);
+                this.projectiles.splice(i, 1);
+                continue;
+            }
+            if (this.gameMode === 'pvp') {
+                const target = this.players.find(pl => pl.playerIndex !== p.ownerIndex && pl.state !== 'dead');
+                if (target && this._pointInBox(p.x, p.y, target.getHurtBox())) {
+                    target.takeDamage(p.damage, p.knockback, p.facing, p.explosive);
+                    this.effects.addHitFlash(p.x, p.y, p.color, p.explosive ? 56 : 28);
+                    this.effects.spawnHitParticles(p.x, p.y, p.explosive ? 20 : 8, p.color);
+                    if (p.explosive) this._explodeProjectile(p);
+                    this.projectiles.splice(i, 1);
+                }
+                continue;
+            }
+            if (!this.level) continue;
+            for (const enemy of this.level.enemies) {
+                if (enemy.dead || enemy.state === 'knockdown') continue;
+                if (this._pointInBox(p.x, p.y, enemy.getHurtBox())) {
+                    if (p.explosive) this._explodeProjectile(p);
+                    else this._hitEnemyWithProjectile(p, enemy);
+                    this.projectiles.splice(i, 1);
+                    break;
+                }
+            }
+        }
+    }
+
+    _pointInBox(x, y, b) {
+        return Math.abs(x - b.x) < b.w / 2 && Math.abs(y - b.y) < b.h / 2;
+    }
+
+    _hitEnemyWithProjectile(p, enemy, damageScale) {
+        const dmg = p.damage * (damageScale || 1);
+        enemy.takeDamage(dmg, p.knockback, p.facing, false, false);
+        if (p.owner) p.owner.onHitEnemy(this);
+        this.effects.addHitFlash(p.x, p.y, p.color, 34);
+        this.effects.spawnHitParticles(p.x, p.y, 10, p.color);
+        this.effects.addDamageNumber(p.x, p.y, dmg, dmg >= 30);
+        this.audio.play('hit');
+        if (enemy.hp <= 0 && p.owner) {
+            p.owner.score += enemy.score * (1 + p.owner.comboCount * 0.1);
+            this.effects.spawnHitParticles(p.x, p.y, 16, '#FF4400');
+            this.audio.play('death');
+        }
+    }
+
+    _explodeProjectile(p) {
+        const radius = p.blastRadius || 80;
+        this.effects.addEnergyBurst(p.x, p.y, '#FF6238', radius);
+        this.effects.addEnergyBurst(p.x, p.y, '#FFD35A', radius * 0.7);
+        this.effects.spawnHitParticles(p.x, p.y, 32, '#FF7A24');
+        this.effects.addHitFlash(p.x, p.y, '#FFD35A', radius * 0.55);
+        this.effects.shake(10, 240);
+        this.audio.play('rocket');
+        if (!this.level) return;
+        for (const enemy of this.level.enemies) {
+            if (enemy.dead || enemy.state === 'knockdown') continue;
+            const dx = enemy.x - p.x;
+            const dy = (enemy.y - 45) - p.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist <= radius) {
+                const scale = 1 - dist / radius * 0.45;
+                this._hitEnemyWithProjectile(p, enemy, scale);
             }
         }
     }
@@ -212,7 +336,8 @@ FF.Game = class {
         const maxCam = this.level ? Math.max(0, this.level.width - this.W) : 0;
         const scrollBound = this.level ? this.level.scrollBoundary : maxCam;
         const clamped = Math.max(0, Math.min(Math.min(maxCam, scrollBound), targetX));
-        this.camX += (clamped - this.camX) * FF.CONFIG.CAMERA_FOLLOW_SPEED;
+        const follow = 1 - Math.pow(1 - FF.CONFIG.CAMERA_FOLLOW_SPEED, dt / 16.67);
+        this.camX += (clamped - this.camX) * Math.min(1, follow);
     }
 
     _startGame(numPlayers) {
@@ -220,6 +345,7 @@ FF.Game = class {
         this.players = [new FF.Player(150, FF.CONFIG.GROUND_Y, 0)];
         if (numPlayers >= 2) this.players.push(new FF.Player(250, FF.CONFIG.GROUND_Y, 1));
         this.effects = new FF.Effects();
+        this.projectiles = [];
         this.ui.gameOverAlpha = 0; this.ui.victoryAlpha = 0;
         this._startLevelTransition();
         this.audio.startBGM();
@@ -232,6 +358,7 @@ FF.Game = class {
         this.level.waves = []; this.level.waveActive = false; this.level.completed = false;
         this.level.scrollBoundary = 9999;
         this.effects = new FF.Effects();
+        this.projectiles = [];
         this.ui.gameOverAlpha = 0; this.ui.victoryAlpha = 0;
         this.pvpWinner = -1;
         this.state = 'playing'; this.waveWarningTimer = 0;
@@ -249,6 +376,7 @@ FF.Game = class {
                     this.transitionPhase = 1; this.transitionTimer = 0;
                     this.level = new FF.Level(this.currentLevel);
                     this.players.forEach((p, i) => { p.x = 150 + i * 80; p.y = FF.CONFIG.GROUND_Y; });
+                    this.projectiles = [];
                     this.camX = 0;
                 }
                 break;
@@ -309,6 +437,7 @@ FF.Game = class {
             ctx.fill(); ctx.restore();
             ent.obj.render(ctx, this.camX);
         }
+        this._renderProjectiles(ctx);
         this.effects.render(ctx, this.camX);
         ctx.restore();
         // HUD
@@ -319,5 +448,36 @@ FF.Game = class {
         if (this.waveWarningTimer > 0 && this.gameMode !== 'pvp') this.ui.renderWaveWarning(ctx, W, H);
         if (this.level && !this.level.waveActive && !this.level.completed && this.level.currentWave > 0 && this.gameMode !== 'pvp')
             this.ui.renderGoArrow(ctx, W, H);
+    }
+
+    _renderProjectiles(ctx) {
+        for (const p of this.projectiles) {
+            const x = p.x - this.camX;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.strokeStyle = p.color;
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = p.explosive ? 18 : 10;
+            if (p.explosive) {
+                ctx.beginPath();
+                ctx.arc(x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#FFD35A';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x - p.facing * 10, p.y);
+                ctx.lineTo(x - p.facing * 28, p.y + 3);
+                ctx.stroke();
+            } else {
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(x, p.y);
+                ctx.lineTo(x - p.facing * 18, p.y - p.vy * 0.8);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
     }
 };

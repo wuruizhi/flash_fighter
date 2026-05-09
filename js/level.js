@@ -44,7 +44,7 @@ FF.Level = class {
                 } else {
                     this.waveDelay = 1200;
                     // Drop weapon after clearing wave
-                    if (Math.random() < 0.5 && this.weaponTypes.length > 0) {
+                    if (Math.random() < 0.75 && this.weaponTypes.length > 0) {
                         const wt = this.weaponTypes[Math.floor(Math.random() * this.weaponTypes.length)];
                         this.weaponDrops.push({ type: wt, x: player.x + (Math.random() - 0.5) * 100, y: FF.CONFIG.GROUND_Y });
                     }
@@ -341,13 +341,34 @@ FF.Level = class {
             ctx.fillRect(dx - 25, w.y - 30, 50, 50);
             ctx.restore();
             // Weapon
-            ctx.strokeStyle = wp.color;
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(dx - 12, w.y - 5);
-            ctx.lineTo(dx + 12, w.y - 5);
-            ctx.stroke();
+            if (wp.ranged) {
+                const longGun = w.type === 'shotgun' || w.type === 'bazooka';
+                const len = w.type === 'bazooka' ? 38 : longGun ? 32 : 22;
+                const h = w.type === 'bazooka' ? 9 : longGun ? 6 : 5;
+                ctx.fillStyle = wp.color;
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.roundRect ? ctx.roundRect(dx - len / 2, w.y - 9, len, h, 3) : ctx.rect(dx - len / 2, w.y - 9, len, h);
+                ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#222';
+                ctx.fillRect(dx - 6, w.y - 4, 7, 8);
+                if (longGun) {
+                    ctx.strokeStyle = '#2A1A10';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath(); ctx.moveTo(dx - len / 2 + 4, w.y - 5); ctx.lineTo(dx - len / 2 - 10, w.y + 2); ctx.stroke();
+                }
+                ctx.fillStyle = wp.bulletColor || '#FFE36E';
+                ctx.beginPath(); ctx.arc(dx + len / 2 + 2, w.y - 6, 3, 0, Math.PI * 2); ctx.fill();
+            } else {
+                ctx.strokeStyle = wp.color;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(dx - 12, w.y - 5);
+                ctx.lineTo(dx + 12, w.y - 5);
+                ctx.stroke();
+            }
             // Label
             ctx.fillStyle = '#FFF';
             ctx.font = '10px "Noto Sans SC", sans-serif';

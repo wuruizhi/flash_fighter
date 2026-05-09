@@ -14,6 +14,15 @@ FF.KeyboardState = class {
     }
     isDown(c) { return !!this.keys[c]; }
     wasPressed(c) { return !!this.justPressed[c]; }
+    pressVirtual(c) {
+        if (!c) return;
+        if (!this.keys[c]) this.justPressed[c] = true;
+        this.keys[c] = true;
+    }
+    releaseVirtual(c) {
+        if (!c) return;
+        this.keys[c] = false;
+    }
     clear() { this.justPressed = {}; }
 };
 
@@ -56,6 +65,7 @@ FF.PlayerInput = class {
     get hp()      { return this.kb.wasPressed(this.bindings.hp); }
     get hk()      { return this.kb.wasPressed(this.bindings.hk); }
     get special() { return this.kb.wasPressed(this.bindings.special); }
+    get dash()    { return this.kb.isDown(this.bindings.dash); }
     get dashLeft(){ return this._dashLeft; }
     get dashRight(){ return this._dashRight; }
     get pause()   { return this.kb.wasPressed('Escape'); }
@@ -67,5 +77,73 @@ FF.PlayerInput = class {
         if (this.hp) return 'hp';
         if (this.hk) return 'hk';
         return null;
+    }
+};
+
+FF.TouchControls = class {
+    constructor(keyboard, bindings) {
+        this.kb = keyboard;
+        this.bindings = { ...bindings };
+        this.active = new Map();
+        this.root = document.createElement('div');
+        this.root.id = 'touch-controls';
+        this.root.setAttribute('aria-hidden', 'true');
+        this.root.innerHTML = `
+            <div class="touch-menu">
+                <button class="touch-btn touch-small" data-action="confirm">START</button>
+                <button class="touch-btn touch-small" data-action="pause">PAUSE</button>
+            </div>
+            <div class="touch-dpad">
+                <button class="touch-btn touch-dir touch-up" data-action="up">^</button>
+                <button class="touch-btn touch-dir touch-left" data-action="left">&lt;</button>
+                <button class="touch-btn touch-dir touch-down" data-action="down">v</button>
+                <button class="touch-btn touch-dir touch-right" data-action="right">&gt;</button>
+            </div>
+            <div class="touch-actions">
+                <button class="touch-btn touch-run" data-action="dash">RUN</button>
+                <button class="touch-btn touch-action" data-action="hp">HP</button>
+                <button class="touch-btn touch-action" data-action="hk">HK</button>
+                <button class="touch-btn touch-action" data-action="lp">LP</button>
+                <button class="touch-btn touch-action" data-action="lk">LK</button>
+                <button class="touch-btn touch-special" data-action="special">SP</button>
+            </div>
+        `;
+        document.getElementById('game-container').appendChild(this.root);
+        this._bindButtons();
+    }
+
+    setBindings(bindings) {
+        this.bindings = { ...bindings };
+    }
+
+    _codeFor(action) {
+        if (action === 'confirm') return 'Enter';
+        if (action === 'pause') return 'Escape';
+        return this.bindings[action];
+    }
+
+    _bindButtons() {
+        const buttons = this.root.querySelectorAll('[data-action]');
+        buttons.forEach(btn => {
+            const action = btn.dataset.action;
+            const press = e => {
+                e.preventDefault();
+                btn.setPointerCapture(e.pointerId);
+                this.active.set(e.pointerId, { action, btn });
+                this.kb.pressVirtual(this._codeFor(action));
+                btn.classList.add('is-active');
+            };
+            const release = e => {
+                const item = this.active.get(e.pointerId);
+                if (!item) return;
+                this.kb.releaseVirtual(this._codeFor(item.action));
+                item.btn.classList.remove('is-active');
+                this.active.delete(e.pointerId);
+            };
+            btn.addEventListener('pointerdown', press);
+            btn.addEventListener('pointerup', release);
+            btn.addEventListener('pointercancel', release);
+            btn.addEventListener('lostpointercapture', release);
+        });
     }
 };

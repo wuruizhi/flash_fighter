@@ -99,6 +99,19 @@ FF.Audio = class {
                 this._tone(120, 0.15, 'square', 0.3);
                 setTimeout(() => this._tone(200, 0.2, 'sine', 0.3), 100);
                 break;
+            case 'gun':
+                this._noise(0.06, 0.75, 2600, 4);
+                this._tone(180, 0.04, 'square', 0.22);
+                break;
+            case 'shotgun':
+                this._noise(0.16, 0.95, 900, 1.4);
+                this._tone(95, 0.08, 'square', 0.28);
+                break;
+            case 'rocket':
+                this._noise(0.22, 1.0, 420, 0.8);
+                this._tone(70, 0.16, 'sawtooth', 0.36);
+                setTimeout(() => this._noise(0.16, 0.8, 1200, 1.2), 90);
+                break;
             case 'death':
                 this._tone(200, 0.3, 'sawtooth', 0.3);
                 setTimeout(() => this._tone(150, 0.3, 'sawtooth', 0.2), 100);

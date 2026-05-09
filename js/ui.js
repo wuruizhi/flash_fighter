@@ -8,8 +8,8 @@ FF.UI = class {
         this.settingsPlayer = 0; // 0=P1, 1=P2
         this.settingsAction = 0;
         this.settingsBinding = false; // waiting for key press
-        this.settingsActions = ['up','down','left','right','lp','lk','hp','hk','special'];
-        this.settingsLabels = ['上移/跳跃','下移/蹲','左移','右移','轻拳(A)','轻脚(B)','重拳(C)','重脚(D)','必杀技'];
+        this.settingsActions = ['up','down','left','right','dash','lp','lk','hp','hk','special'];
+        this.settingsLabels = ['上移/跳跃','下移/蹲','左移','右移','冲刺','轻拳(A)','轻脚(B)','重拳(C)','重脚(D)','必杀技'];
     }
 
     renderMenu(ctx, W, H) {
@@ -244,8 +244,11 @@ FF.UI = class {
 
         // Weapon
         if (player.weapon) {
+            const wp = FF.WEAPONS[player.weapon];
+            const icon = wp.ranged ? '🔫' : '🗡';
+            const countLabel = wp.ranged ? '弹' : '耐';
             ctx.fillStyle = '#FFF'; ctx.font = '11px "Noto Sans SC",sans-serif';
-            ctx.fillText(`🗡 ${FF.WEAPONS[player.weapon].name}(${player.weaponDurability})`, isLeft ? bx : bx+200, pad+82);
+            ctx.fillText(`${icon} ${wp.name} ${countLabel}:${player.weaponDurability}`, isLeft ? bx : bx+200, pad+82);
         }
 
         // Level info (center, only once)

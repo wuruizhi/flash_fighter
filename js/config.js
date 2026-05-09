@@ -7,8 +7,9 @@ const FF = window.FF = {};
 FF.CONFIG = {
     CANVAS_WIDTH: 960, CANVAS_HEIGHT: 540, GROUND_Y: 440,
     GRAVITY: 0.55, FRICTION: 0.88, MAX_ENEMIES_ON_SCREEN: 6,
-    PLAYER_SPEED: 4.5, PLAYER_RUN_SPEED: 7.0, PLAYER_JUMP_FORCE: -12,
-    PLAYER_HP: 100, PLAYER_RAGE_MAX: 100, RAGE_PER_HIT: 5, RAGE_PER_DAMAGE: 8,
+    PLAYER_SPEED: 5.2, PLAYER_RUN_SPEED: 8.0, PLAYER_JUMP_FORCE: -12,
+    PLAYER_HP: 120, PLAYER_LIVES: 5, PLAYER_RAGE_MAX: 100, RAGE_PER_HIT: 5, RAGE_PER_DAMAGE: 8,
+    ENEMY_DAMAGE_SCALE: 0.82,
     CAMERA_FOLLOW_SPEED: 0.08, CAMERA_DEAD_ZONE: 80,
     ENEMY_CORPSE_DURATION: 12000,
     COMBO_TIMEOUT: 700, HITSTUN_MULT: 1, KNOCKBACK_MULT: 1,
@@ -30,9 +31,9 @@ FF.CONFIG = {
 // Default key bindings (KOF arcade style)
 FF.DEFAULT_BINDINGS = {
     p1: { up:'KeyW', down:'KeyS', left:'KeyA', right:'KeyD',
-          lp:'KeyJ', lk:'KeyK', hp:'KeyU', hk:'KeyI', special:'Space' },
+          lp:'KeyJ', lk:'KeyK', hp:'KeyU', hk:'KeyI', special:'Space', dash:'ShiftLeft' },
     p2: { up:'ArrowUp', down:'ArrowDown', left:'ArrowLeft', right:'ArrowRight',
-          lp:'Numpad1', lk:'Numpad2', hp:'Numpad4', hk:'Numpad5', special:'Numpad0' }
+          lp:'Numpad1', lk:'Numpad2', hp:'Numpad4', hk:'Numpad5', special:'Numpad0', dash:'ShiftRight' }
 };
 
 // Attack definitions - 4 button system
@@ -83,6 +84,8 @@ FF.ENEMY_TYPES = {
     eliteKnife:{ hp:50, speed:2.5, attackDamage:12, attackRange:55, attackCooldown:900, aggroRange:350, width:30, height:82, color:'eliteKnife', score:300, elite:true, atkPattern:'dash' },
     eliteNinja:{ hp:40, speed:3.8, attackDamage:10, attackRange:52, attackCooldown:700, aggroRange:400, width:28, height:78, color:'eliteNinja', score:350, elite:true, atkPattern:'combo' },
     eliteBrute:{ hp:100, speed:1.5, attackDamage:22, attackRange:60, attackCooldown:1800, aggroRange:280, width:44, height:95, color:'eliteBrute', score:400, elite:true, superArmor:true, atkPattern:'charge' },
+    ryoko:     { hp:130, speed:1.35, attackDamage:20, attackRange:66, attackCooldown:1750, aggroRange:360, width:48, height:94, color:'ryoko', score:550, elite:true, superArmor:true, atkPattern:'charge', displayName:'大胃袋良子' },
+    caixukun:  { hp:90, speed:3.1, attackDamage:15, attackRange:68, attackCooldown:820, aggroRange:430, width:34, height:88, color:'caixukun', score:650, elite:true, atkPattern:'combo', displayName:'蔡徐坤' },
     // Bosses - one per level
     boss1:     { hp:200, speed:2.0, attackDamage:18, attackRange:60, attackCooldown:1200, aggroRange:500, width:44, height:96, color:'boss1', score:1000, superArmor:true, phases:3, boss:true, bossName:'街霸·金刚' },
     boss2:     { hp:280, speed:2.5, attackDamage:20, attackRange:58, attackCooldown:1000, aggroRange:500, width:40, height:92, color:'boss2', score:1500, superArmor:true, phases:3, boss:true, bossName:'暗影·毒蛇' },
@@ -92,6 +95,8 @@ FF.ENEMY_TYPES = {
 FF.CONFIG.ENEMY_COLORS.eliteKnife = { shirt:'#8B0000', pants:'#2a0a0a', skin:'#C4A57B' };
 FF.CONFIG.ENEMY_COLORS.eliteNinja = { shirt:'#1a1a2e', pants:'#0a0a15', skin:'#D4A574' };
 FF.CONFIG.ENEMY_COLORS.eliteBrute = { shirt:'#2a2a00', pants:'#1a1a00', skin:'#8B6F47' };
+FF.CONFIG.ENEMY_COLORS.ryoko = { shirt:'#E94B7B', pants:'#4A2A2A', skin:'#F0BC8E' };
+FF.CONFIG.ENEMY_COLORS.caixukun = { shirt:'#111111', pants:'#F2F2F2', skin:'#D4A574' };
 FF.CONFIG.ENEMY_COLORS.boss1 = { shirt:'#880000', pants:'#440000', skin:'#9B7653' };
 FF.CONFIG.ENEMY_COLORS.boss2 = { shirt:'#004400', pants:'#002200', skin:'#C4A57B' };
 FF.CONFIG.ENEMY_COLORS.boss3 = { shirt:'#330033', pants:'#1a001a', skin:'#8B5E3C' };
@@ -102,33 +107,36 @@ FF.LEVELS = [
           {enemies:[{type:'thug',count:3}]},
           {enemies:[{type:'thug',count:3},{type:'fast',count:1}]},
           {enemies:[{type:'thug',count:2},{type:'fast',count:2}]},
-          {enemies:[{type:'eliteKnife',count:1},{type:'thug',count:2}]},
+          {enemies:[{type:'ryoko',count:1},{type:'eliteKnife',count:1},{type:'thug',count:1}]},
           {enemies:[{type:'boss1',count:1}]}
-      ], weapons:['pipe','bat'] },
+      ], weapons:['pipe','bat','pistol'] },
     { name:'第二关：暗巷追击', bgType:'alley', width:2800,
       waves:[
           {enemies:[{type:'fast',count:3}]},
           {enemies:[{type:'thug',count:3},{type:'fast',count:2}]},
-          {enemies:[{type:'eliteNinja',count:1},{type:'fast',count:2}]},
+          {enemies:[{type:'caixukun',count:1},{type:'eliteNinja',count:1},{type:'fast',count:1}]},
           {enemies:[{type:'heavy',count:1},{type:'eliteKnife',count:1},{type:'thug',count:2}]},
           {enemies:[{type:'eliteBrute',count:1},{type:'eliteNinja',count:1}]},
           {enemies:[{type:'boss2',count:1}]}
-      ], weapons:['pipe','bat','knife'] },
+      ], weapons:['pipe','bat','knife','pistol','shotgun'] },
     { name:'第三关：天台决战', bgType:'rooftop', width:2200,
       waves:[
           {enemies:[{type:'fast',count:3},{type:'thug',count:2}]},
           {enemies:[{type:'eliteNinja',count:2},{type:'fast',count:2}]},
           {enemies:[{type:'heavy',count:2},{type:'eliteKnife',count:1}]},
-          {enemies:[{type:'eliteBrute',count:1},{type:'eliteNinja',count:1},{type:'eliteKnife',count:1}]},
+          {enemies:[{type:'ryoko',count:1},{type:'caixukun',count:1},{type:'eliteKnife',count:1}]},
           {enemies:[{type:'boss3',count:1},{type:'thug',count:2}]}
-      ], weapons:['knife','katana'] }
+      ], weapons:['knife','katana','shotgun','bazooka'] }
 ];
 
 FF.WEAPONS = {
-    pipe:   { name:'铁管', damageMult:1.5, rangeMult:1.2, durability:15, color:'#888' },
-    bat:    { name:'棍棒', damageMult:1.3, rangeMult:1.4, durability:20, color:'#8B6914' },
-    knife:  { name:'匕首', damageMult:1.8, rangeMult:1.0, durability:10, color:'#C0C0C0' },
-    katana: { name:'武士刀', damageMult:2.0, rangeMult:1.5, durability:8,  color:'#E8E8E8' }
+    pipe:    { name:'铁管', damageMult:1.5, rangeMult:1.2, durability:15, color:'#888' },
+    bat:     { name:'棍棒', damageMult:1.3, rangeMult:1.4, durability:20, color:'#8B6914' },
+    knife:   { name:'匕首', damageMult:1.8, rangeMult:1.0, durability:10, color:'#C0C0C0' },
+    katana:  { name:'武士刀', damageMult:2.0, rangeMult:1.5, durability:8,  color:'#E8E8E8' },
+    pistol:  { name:'手枪', ranged:true, ammo:18, durability:18, projectileDamage:18, projectileSpeed:18, knockback:7, pellets:1, spread:0.02, range:720, fireRecovery:180, color:'#3D4652', bulletColor:'#FFE36E', sound:'gun' },
+    shotgun: { name:'霰弹枪', ranged:true, ammo:8, durability:8, projectileDamage:11, projectileSpeed:16, knockback:9, pellets:5, spread:0.14, range:460, fireRecovery:260, color:'#7A4E25', bulletColor:'#FFB24A', sound:'shotgun' },
+    bazooka: { name:'火箭筒', ranged:true, ammo:3, durability:3, projectileDamage:42, projectileSpeed:10, knockback:18, pellets:1, spread:0, range:760, explosive:true, blastRadius:92, fireRecovery:420, color:'#375F3B', bulletColor:'#FF6238', sound:'rocket' }
 };
 
 // Smoother poses with more natural joint angles

@@ -17,12 +17,15 @@ FF.Enemy = class {
         this.elite = !!def.elite;
         this.boss = !!def.boss;
         this.bossName = def.bossName || '';
+        this.displayName = def.displayName || '';
         this.atkPattern = def.atkPattern || 'normal';
         this.facing = -1;
         this.state = 'idle';
         this.stateTimer = 0; this.cooldown = 0;
         this.anim = 'idle'; this.animTime = 0; this.animFrame = 0;
         this.currentPose = { ...FF.POSES.idle1 };
+        this.previousPose = { ...this.currentPose };
+        this.poseBlendTime = 0; this.poseBlendDuration = 0;
         this.attackHit = false; this.attackActive = false;
         this.dead = false; this.grounded = true;
         // AI
@@ -248,23 +251,46 @@ FF.Enemy = class {
 
     getHurtBox() { return { x: this.x, y: this.y - this.height / 2, w: this.width, h: this.height }; }
 
-    setAnim(name) { if (this.anim === name) return; this.anim = name; this.animTime = 0; this.animFrame = 0; }
+    setAnim(name) {
+        if (this.anim === name) return;
+        this.previousPose = { ...this.currentPose };
+        const urgent = name === 'hurt' || name === 'knockdown' || name === 'die';
+        this.poseBlendDuration = urgent ? 35 : 82;
+        this.poseBlendTime = this.poseBlendDuration;
+        this.anim = name; this.animTime = 0; this.animFrame = 0;
+    }
 
     _updateAnimation(dt) {
         const anim = FF.ANIMS[this.anim];
         if (!anim) return;
         this.animTime += dt;
-        const frame = anim.frames[this.animFrame];
+        let frame = anim.frames[this.animFrame];
         if (!frame) return;
-        if (this.animTime >= frame.dur) {
-            this.animTime -= frame.dur; this.animFrame++;
-            if (this.animFrame >= anim.frames.length) this.animFrame = anim.loop ? 0 : anim.frames.length - 1;
+        let guard = 0;
+        while (frame && this.animTime >= frame.dur && guard++ < 8) {
+            this.animTime -= frame.dur;
+            if (this.animFrame < anim.frames.length - 1) {
+                this.animFrame++;
+            } else if (anim.loop) {
+                this.animFrame = 0;
+            } else {
+                this.animFrame = anim.frames.length - 1;
+                this.animTime = Math.min(this.animTime, frame.dur);
+                break;
+            }
+            frame = anim.frames[this.animFrame];
         }
         const curFrame = anim.frames[this.animFrame];
         const nextIdx = (this.animFrame + 1) % anim.frames.length;
         const nextFrame = anim.frames[anim.loop ? nextIdx : Math.min(nextIdx, anim.frames.length - 1)];
         const t = curFrame.dur > 0 ? this.animTime / curFrame.dur : 0;
-        this.currentPose = FF.lerpPose(curFrame.pose, nextFrame.pose, Math.min(1, t));
+        let pose = FF.lerpPose(curFrame.pose, nextFrame.pose, Math.min(1, t));
+        if (this.poseBlendTime > 0 && this.previousPose) {
+            this.poseBlendTime = Math.max(0, this.poseBlendTime - dt);
+            const blendT = 1 - this.poseBlendTime / Math.max(1, this.poseBlendDuration);
+            pose = FF.lerpPose(this.previousPose, pose, blendT);
+        }
+        this.currentPose = pose;
         this.attackActive = !!curFrame.active;
     }
 
@@ -276,7 +302,9 @@ FF.Enemy = class {
         if (this.facing === -1) ctx.scale(-1, 1);
 
         const colors = FF.CONFIG.ENEMY_COLORS[this.colorKey] || FF.CONFIG.ENEMY_COLORS.thug;
-        const scale = this.type.includes('Brute') || this.type === 'boss3' ? 1.35
+        const scale = this.type === 'ryoko' ? 1.28
+            : this.type === 'caixukun' ? 1.05
+            : this.type.includes('Brute') || this.type === 'boss3' ? 1.35
             : this.type.includes('heavy') || this.type === 'boss1' ? 1.2
             : this.type.includes('Ninja') || this.type.includes('fast') ? 0.9 : 1;
         ctx.scale(scale, scale);
@@ -290,6 +318,7 @@ FF.Enemy = class {
             ctx.shadowColor = '#FF4400';
             ctx.shadowBlur = 15;
         }
+        this._drawSpecialAura(ctx);
 
         this._drawBody(ctx, this.currentPose, colors);
 
@@ -317,7 +346,7 @@ FF.Enemy = class {
         ctx.restore();
 
         // HP bar (bigger for boss/elite)
-        if (!this.dead && this.hp < this.maxHp) {
+        if (!this.dead && (this.hp < this.maxHp || this.boss || this.displayName)) {
             const bw = this.boss ? 80 : this.elite ? 50 : 40;
             const bh = this.boss ? 6 : 4;
             const bx = drawX - bw / 2;
@@ -329,18 +358,50 @@ FF.Enemy = class {
                 : this.elite ? '#FF6600' : '#CC3333';
             ctx.fillStyle = hpColor;
             ctx.fillRect(bx, by, bw * hpPct, bh);
-            // Boss name
-            if (this.boss && this.bossName) {
+            // Named elite/boss label
+            const name = this.bossName || this.displayName;
+            if ((this.boss || this.displayName) && name) {
                 ctx.save();
                 ctx.fillStyle = '#FFD700'; ctx.font = 'bold 11px "Noto Sans SC",sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(this.bossName, drawX, by - 5);
+                ctx.fillText(name, drawX, by - 5);
                 // Phase indicator
-                ctx.fillStyle = '#FFF'; ctx.font = '9px Arial';
-                const phaseStr = '●'.repeat(this.phase) + '○'.repeat(Math.max(0, this.phases - this.phase));
-                ctx.fillText('Phase ' + phaseStr, drawX, by - 16);
+                if (this.boss) {
+                    ctx.fillStyle = '#FFF'; ctx.font = '9px Arial';
+                    const phaseStr = '●'.repeat(this.phase) + '○'.repeat(Math.max(0, this.phases - this.phase));
+                    ctx.fillText('Phase ' + phaseStr, drawX, by - 16);
+                }
                 ctx.restore();
             }
+        }
+    }
+
+    _drawSpecialAura(ctx) {
+        if (this.type === 'caixukun') {
+            const t = this.animTime * 0.02;
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.strokeStyle = `rgba(255,215,80,${0.28 + Math.sin(t) * 0.08})`;
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 2; i++) {
+                ctx.beginPath();
+                ctx.ellipse(0, -48, 20 + i * 12, 58 + i * 6, Math.sin(t + i) * 0.18, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.fillStyle = 'rgba(255,215,80,0.85)';
+            ctx.font = 'bold 13px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('♪', -25, -82 + Math.sin(t) * 5);
+            ctx.fillText('♪', 22, -60 + Math.cos(t * 1.3) * 5);
+            ctx.restore();
+        } else if (this.type === 'ryoko') {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.fillStyle = 'rgba(255,120,90,0.16)';
+            ctx.beginPath();
+            ctx.ellipse(0, -42, 29, 37, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
         }
     }
 
@@ -373,6 +434,23 @@ FF.Enemy = class {
         // Torso
         ctx.fillStyle=shirt;
         ctx.beginPath(); ctx.moveTo(-14,sY-2); ctx.lineTo(14,sY-2); ctx.lineTo(16,hY+2); ctx.lineTo(-16,hY+2); ctx.closePath(); ctx.fill();
+        if (this.type === 'ryoko') {
+            ctx.fillStyle = '#FFF4D6';
+            ctx.beginPath();
+            ctx.ellipse(0, hY - 14, 17, 22, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#E94B7B'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(-10, sY + 1); ctx.lineTo(0, hY - 32); ctx.lineTo(10, sY + 1); ctx.stroke();
+            ctx.fillStyle = '#B92A4D'; ctx.font = 'bold 9px "Noto Sans SC",sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText('饭', 0, hY - 12);
+        } else if (this.type === 'caixukun') {
+            const shine = 0.45 + Math.sin(this.animTime * 0.02) * 0.2;
+            ctx.strokeStyle = `rgba(255,215,80,${shine})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(-11, sY + 2); ctx.lineTo(0, hY - 10); ctx.lineTo(11, sY + 2); ctx.stroke();
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath(); ctx.arc(0, hY - 15, 3, 0, Math.PI * 2); ctx.fill();
+        }
         // Elite stripe
         if (this.elite) {
             ctx.strokeStyle='#FFD700'; ctx.lineWidth=2;
@@ -399,6 +477,22 @@ FF.Enemy = class {
         drawLimb(10,sY,rex,rey,skin,7); drawLimb(rex,rey,rhx,rhy,skin,7);
         ctx.fillStyle=skin; ctx.beginPath(); ctx.arc(rhx,rhy,4,0,Math.PI*2); ctx.fill();
 
+        if (this.type === 'caixukun') {
+            ctx.save(); ctx.translate(rhx, rhy); ctx.rotate(pose.rShoulder + pose.rElbow - 0.3);
+            ctx.strokeStyle = '#222'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(12, 0); ctx.stroke();
+            ctx.fillStyle = '#C0C0C0'; ctx.beginPath(); ctx.arc(15, 0, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        } else if (this.type === 'ryoko') {
+            ctx.save(); ctx.translate(rhx, rhy); ctx.rotate(pose.rShoulder + pose.rElbow + 0.2);
+            ctx.fillStyle = '#FFF4D6';
+            ctx.beginPath(); ctx.ellipse(13, 0, 9, 6, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#8A4B18'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(6, -4); ctx.lineTo(22, -9); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(6, 1); ctx.lineTo(23, 3); ctx.stroke();
+            ctx.restore();
+        }
+
         // Elite weapon (knife for eliteKnife)
         if (this.type === 'eliteKnife') {
             const angle = pose.rShoulder + pose.rElbow;
@@ -416,6 +510,22 @@ FF.Enemy = class {
         ctx.save(); ctx.translate(0,hdY); ctx.rotate(pose.headTilt||0);
         ctx.fillStyle=skin; ctx.beginPath(); ctx.arc(0,0,hdR,0,Math.PI*2); ctx.fill();
         ctx.fillStyle='#1a1a1a'; ctx.beginPath(); ctx.arc(0,-1,hdR+1,-Math.PI,0); ctx.fill();
+        if (this.type === 'ryoko') {
+            ctx.fillStyle = '#1a1a1a';
+            ctx.beginPath(); ctx.arc(-10, -6, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(10, -6, 5, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#E94B7B'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(-12, -12); ctx.lineTo(12, -12); ctx.stroke();
+            ctx.strokeStyle = '#7A1F1F'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(0, 5, 5, 0, Math.PI); ctx.stroke();
+        } else if (this.type === 'caixukun') {
+            ctx.fillStyle = '#3A235E';
+            ctx.beginPath(); ctx.arc(0, -2, hdR + 1, -Math.PI, 0); ctx.fill();
+            ctx.fillStyle = '#111';
+            ctx.fillRect(-8, -4, 16, 4);
+            ctx.fillStyle = '#FFD700';
+            ctx.fillRect(-1, -11, 2, 7);
+        }
         // Ninja mask
         if (this.type === 'eliteNinja') {
             ctx.fillStyle='#1a1a2e';
